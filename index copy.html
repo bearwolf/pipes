@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Pipes Screensaver with Nodes</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        const gridSize = 10;
+        const pipeRadius = 0.1;
+        const nodeRadius = 0.1;
+        const grid = {};
+        const minPipeLength = 3; // Minsta längd för ett rör
+        let currentPipe = null;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            camera.position.set(gridSize / 2, gridSize / 2, gridSize * 1.5);
+            camera.lookAt(gridSize / 2, gridSize / 2, gridSize / 2);
+
+            startNewPipe(Math.floor(gridSize/2), Math.floor(gridSize/2), Math.floor(gridSize/2));
+        }
+
+        function getAvailableDirections(x, y, z) {
+            const directions = [];
+            if (x > 0 && !grid[`${x-1},${y},${z}`]) directions.push('x-');
+            if (x < gridSize - 1 && !grid[`${x+1},${y},${z}`]) directions.push('x+');
+            if (y > 0 && !grid[`${x},${y-1},${z}`]) directions.push('y-');
+            if (y < gridSize - 1 && !grid[`${x},${y+1},${z}`]) directions.push('y+');
+            if (z > 0 && !grid[`${x},${y},${z-1}`]) directions.push('z-');
+            if (z < gridSize - 1 && !grid[`${x},${y},${z+1}`]) directions.push('z+');
+            return directions;
+        }
+
+        function getRandomDirection(x, y, z, currentDirection = null) {
+            const availableDirections = getAvailableDirections(x, y, z);
+            if (availableDirections.length === 0) return null;
+            
+            // 70% chans att fortsätta i samma riktning om möjligt
+            if (currentDirection && availableDirections.includes(currentDirection) && Math.random() < 0.7) {
+                return currentDirection;
+            }
+            
+            return availableDirections[Math.floor(Math.random() * availableDirections.length)];
+        }
+
+        function startNewPipe(x, y, z) {
+    // Kontrollera om positionen är ledig
+    if (grid[`${x},${y},${z}`]) {
+        findNewStartPoint();
+        return;
+    }
+
+    const direction = getRandomDirection(x, y, z);
+    if (direction) {
+        currentPipe = {
+            x: x,
+            y: y,
+            z: z,
+            direction: direction,
+            previousDirection: null,  // Lägg till denna rad
+            length: 0,
+            color: Math.random() * 0xffffff
+        };
+        continuePipe();
+    } else {
+        findNewStartPoint();
+    }
+}
+
+
+        function findNewStartPoint() {
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    for (let z = 0; z < gridSize; z++) {
+                        if (getAvailableDirections(x, y, z).length > 0 && !grid[`${x},${y},${z}`]) {
+                            startNewPipe(x, y, z);
+                            return;
+                        }
+                    }
+                }
+            }
+            console.log("Grid is full!");
+        }
+
+        function continuePipe() {
+            if (!currentPipe) return;
+
+            let {x, y, z, direction, length, color} = currentPipe;
+
+            addPipeSegment(x, y, z, direction, color);
+            currentPipe.length++;
+
+            // Beräkna nästa position
+            switch(direction) {
+                case 'x+': x++; break;
+                case 'x-': x--; break;
+                case 'y+': y++; break;
+                case 'y-': y--; break;
+                case 'z+': z++; break;
+                case 'z-': z--; break;
+            }
+
+            currentPipe.x = x;
+            currentPipe.y = y;
+            currentPipe.z = z;
+
+            // Välj ny riktning
+            const newDirection = getRandomDirection(x, y, z, direction);
+            if (newDirection) {
+                currentPipe.direction = newDirection;
+                setTimeout(continuePipe, 100);
+            } else {
+                startNewPipe(Math.floor(gridSize/2), Math.floor(gridSize/2), Math.floor(gridSize/2));
+            }
+        }
+
+        function addPipeSegment(x, y, z, direction, color) {
+    const material = new THREE.MeshPhongMaterial({color: color});
+
+    // Lägg till nod (boll) vid startpunkten om det är första segmentet
+    if (currentPipe.length === 0) {
+        addNode(x, y, z, material);
+    }
+
+    let geometry, mesh;
+    let endX = x, endY = y, endZ = z;
+
+    switch(direction) {
+        case 'x+':
+            geometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 16);
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.z = Math.PI / 2;
+            mesh.position.set(x + 0.5, y, z);
+            endX++;
+            break;
+        case 'x-':
+            geometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 16);
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.z = Math.PI / 2;
+            mesh.position.set(x - 0.5, y, z);
+            endX--;
+            break;
+        case 'y+':
+            geometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 16);
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, y + 0.5, z);
+            endY++;
+            break;
+        case 'y-':
+            geometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 16);
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, y - 0.5, z);
+            endY--;
+            break;
+        case 'z+':
+            geometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 16);
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = Math.PI / 2;
+            mesh.position.set(x, y, z + 0.5);
+            endZ++;
+            break;
+        case 'z-':
+            geometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 16);
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = Math.PI / 2;
+            mesh.position.set(x, y, z - 0.5);
+            endZ--;
+            break;
+    }
+
+    mesh.name = `pipe_${currentPipe.length}`;
+    scene.add(mesh);
+    grid[`${x},${y},${z}`] = {mesh, direction};
+
+    // Lägg till nod (boll) vid ändpunkten om riktningen ändras
+    if (currentPipe.length > 0 && direction !== currentPipe.previousDirection) {
+        addNode(x, y, z, material);
+    }
+
+    // Uppdatera previous direction
+    currentPipe.previousDirection = direction;
+}
+
+
+function addNode(x, y, z, material) {
+    const nodeGeometry = new THREE.SphereGeometry(nodeRadius, 32, 32);
+    const nodeMesh = new THREE.Mesh(nodeGeometry, material);
+    nodeMesh.position.set(x, y, z);
+    scene.add(nodeMesh);
+}
+
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            camera.position.x = gridSize / 2 + Math.sin(Date.now() * 0.001) * gridSize;
+            camera.position.z = gridSize / 2 + Math.cos(Date.now() * 0.001) * gridSize;
+            camera.lookAt(gridSize / 2, gridSize / 2, gridSize / 2);
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Pipes Screensaver with Nodes</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+
+    <script>
+        let scene, camera, renderer;
+        let pipeInstancedMesh;
+        const gridSize = 10;
+        const pipeRadius = 0.1;
+        const nodeRadius = 0.1;
+        const grid = {};
+        const minPipeLength = 3;
+        let currentPipe = null;
+        let pipeSpeed = 300;
+        let rotationSpeed = 0.001;
+        let instanceIndex = 0;
+        const instanceCount = 1000;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            camera.position.set(gridSize / 2, gridSize / 2, gridSize * 1.5);
+            camera.lookAt(gridSize / 2, gridSize / 2, gridSize / 2);
+
+            const pipeGeometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, 1, 16);
+            pipeGeometry.translate(0, 0.5, 0);
+            const pipeMaterial = new THREE.MeshPhongMaterial();
+            pipeInstancedMesh = new THREE.InstancedMesh(pipeGeometry, pipeMaterial, instanceCount);
+            pipeInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            scene.add(pipeInstancedMesh);
+
+            setupGUI();
+            startNewPipe(Math.floor(gridSize/2), Math.floor(gridSize/2), Math.floor(gridSize/2));
+        }
+
+        function setupGUI() {
+            const gui = new dat.GUI();
+            const animationFolder = gui.addFolder('Animation');
+
+            animationFolder.add({ speed: pipeSpeed }, 'speed', 5, 3000)
+                .name('Pipe Speed (ms)')
+                .onChange(function(value) {
+                    pipeSpeed = value;
+                });
+            animationFolder.add({ rotationSpeed: rotationSpeed }, 'rotationSpeed', 0, 0.005)
+                .name('Rotation Speed')
+                .step(0.0001)
+                .onChange(function(value) {
+                    rotationSpeed = value;
+                });
+            animationFolder.open();
+        }
+
+        function getAvailableDirections(x, y, z) {
+            const directions = [];
+            if (x > 0 && !grid[`${x-1},${y},${z}`]) directions.push('x-');
+            if (x < gridSize - 1 && !grid[`${x+1},${y},${z}`]) directions.push('x+');
+            if (y > 0 && !grid[`${x},${y-1},${z}`]) directions.push('y-');
+            if (y < gridSize - 1 && !grid[`${x},${y+1},${z}`]) directions.push('y+');
+            if (z > 0 && !grid[`${x},${y},${z-1}`]) directions.push('z-');
+            if (z < gridSize - 1 && !grid[`${x},${y},${z+1}`]) directions.push('z+');
+            return directions;
+        }
+
+        function getRandomDirection(x, y, z, currentDirection = null) {
+            const availableDirections = getAvailableDirections(x, y, z);
+            if (availableDirections.length === 0) return null;
+            
+            if (currentDirection && availableDirections.includes(currentDirection) && Math.random() < 0.7) {
+                return currentDirection;
+            }
+            
+            return availableDirections[Math.floor(Math.random() * availableDirections.length)];
+        }
+
+        function startNewPipe(x, y, z) {
+            if (grid[`${x},${y},${z}`]) {
+                findNewStartPoint();
+                return;
+            }
+
+            const direction = getRandomDirection(x, y, z);
+            if (direction) {
+                currentPipe = {
+                    x: x,
+                    y: y,
+                    z: z,
+                    direction: direction,
+                    previousDirection: null,
+                    length: 0,
+                    color: Math.random() * 0xffffff
+                };
+                continuePipe();
+            } else {
+                findNewStartPoint();
+            }
+        }
+
+        function findNewStartPoint() {
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    for (let z = 0; z < gridSize; z++) {
+                        if (getAvailableDirections(x, y, z).length > 0 && !grid[`${x},${y},${z}`]) {
+                            startNewPipe(x, y, z);
+                            return;
+                        }
+                    }
+                }
+            }
+            console.log("Grid is full!");
+        }
+
+        function continuePipe() {
+            if (!currentPipe) return;
+
+            let {x, y, z, direction, length, color} = currentPipe;
+
+            addPipeSegment(x, y, z, direction, color);
+            currentPipe.length++;
+
+            switch(direction) {
+                case 'x+': x++; break;
+                case 'x-': x--; break;
+                case 'y+': y++; break;
+                case 'y-': y--; break;
+                case 'z+': z++; break;
+                case 'z-': z--; break;
+            }
+
+            currentPipe.x = x;
+            currentPipe.y = y;
+            currentPipe.z = z;
+
+            const newDirection = getRandomDirection(x, y, z, direction);
+            if (newDirection) {
+                currentPipe.direction = newDirection;
+                setTimeout(continuePipe, pipeSpeed);
+            } else {
+                setTimeout(() => startNewPipe(Math.floor(gridSize/2), Math.floor(gridSize/2), Math.floor(gridSize/2)), pipeSpeed);
+            }
+        }
+
+        function addPipeSegment(x, y, z, direction, color) {
+            if (instanceIndex >= instanceCount) {
+                console.warn('Max instance count reached');
+                return;
+            }
+
+            const matrix = new THREE.Matrix4();
+            const position = new THREE.Vector3(x, y, z);
+            const quaternion = new THREE.Quaternion();
+            const scale = new THREE.Vector3(1, 0.01, 1);
+
+            switch(direction) {
+                case 'x+':
+                    quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2);
+                    position.x += 0.5;
+                    break;
+                case 'x-':
+                    quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+                    position.x -= 0.5;
+                    break;
+                case 'y+':
+                    position.y += 0.5;
+                    break;
+                case 'y-':
+                    quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+                    position.y -= 0.5;
+                    break;
+                case 'z+':
+                    quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                    position.z += 0.5;
+                    break;
+                case 'z-':
+                    quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+                    position.z -= 0.5;
+                    break;
+            }
+
+            matrix.compose(position, quaternion, scale);
+            pipeInstancedMesh.setMatrixAt(instanceIndex, matrix);
+            pipeInstancedMesh.setColorAt(instanceIndex, new THREE.Color(color));
+            
+            pipeInstancedMesh.instanceMatrix.needsUpdate = true;
+            if (pipeInstancedMesh.instanceColor) pipeInstancedMesh.instanceColor.needsUpdate = true;
+
+            growPipeInstance(instanceIndex);
+
+            instanceIndex++;
+
+            if (currentPipe.length === 0 || direction !== currentPipe.previousDirection) {
+                addNode(x, y, z, new THREE.MeshPhongMaterial({color: color}));
+            }
+
+            currentPipe.previousDirection = direction;
+            grid[`${x},${y},${z}`] = true;
+        }
+
+        function growPipeInstance(index) {
+            let scale = { value: 0.01 };
+            
+            new TWEEN.Tween(scale)
+                .to({value: 1}, pipeSpeed)
+                .easing(TWEEN.Easing.Linear.None)
+                .onUpdate(() => {
+                    const matrix = new THREE.Matrix4();
+                    pipeInstancedMesh.getMatrixAt(index, matrix);
+                    const position = new THREE.Vector3();
+                    const quaternion = new THREE.Quaternion();
+                    const scale = new THREE.Vector3();
+                    matrix.decompose(position, quaternion, scale);
+                    scale.y = scale.value;
+                    matrix.compose(position, quaternion, scale);
+                    pipeInstancedMesh.setMatrixAt(index, matrix);
+                    pipeInstancedMesh.instanceMatrix.needsUpdate = true;
+                })
+                .start();
+        }
+
+        function addNode(x, y, z, material) {
+            const nodeGeometry = new THREE.SphereGeometry(nodeRadius, 32, 32);
+            const nodeMesh = new THREE.Mesh(nodeGeometry, material);
+            nodeMesh.position.set(x, y, z);
+            scene.add(nodeMesh);
+        }
+
+        function updateCamera() {
+            const time = Date.now() * rotationSpeed;
+            camera.position.x = gridSize / 2 + Math.sin(time) * gridSize;
+            camera.position.z = gridSize / 2 + Math.cos(time) * gridSize;
+            camera.lookAt(gridSize / 2, gridSize / 2, gridSize / 2);
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

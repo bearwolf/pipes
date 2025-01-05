@@ -22,6 +22,8 @@
         let currentPipe = null;
         let pipeSpeed = 300;
         let rotationSpeed = 0.001;
+        let totalGridPoints;
+        let filledGridPoints = 0;
 
 
 
@@ -57,7 +59,7 @@ animationFolder.open();
 
             camera.position.set(gridSize / 2, gridSize / 2, gridSize * 1.5);
             camera.lookAt(gridSize / 2, gridSize / 2, gridSize / 2);
-
+            totalGridPoints = gridSize * gridSize * gridSize;
             startNewPipe(Math.floor(gridSize/2), Math.floor(gridSize/2), Math.floor(gridSize/2));
         }
 
@@ -109,20 +111,20 @@ animationFolder.open();
 }
 
 
-        function findNewStartPoint() {
-            for (let x = 0; x < gridSize; x++) {
-                for (let y = 0; y < gridSize; y++) {
-                    for (let z = 0; z < gridSize; z++) {
-                        if (getAvailableDirections(x, y, z).length > 0 && !grid[`${x},${y},${z}`]) {
-                            startNewPipe(x, y, z);
-                            return;
-                        }
-                    }
+function findNewStartPoint() {
+    for (let x = 0; x < gridSize; x++) {
+        for (let y = 0; y < gridSize; y++) {
+            for (let z = 0; z < gridSize; z++) {
+                if (getAvailableDirections(x, y, z).length > 0 && !grid[`${x},${y},${z}`]) {
+                    startNewPipe(x, y, z);
+                    return;
                 }
             }
-            console.log("Grid is full!");
         }
-
+    }
+    console.log("Grid is full! Restarting...");
+    resetScene();
+}
         function continuePipe() {
     if (!currentPipe) return;
 
@@ -219,7 +221,13 @@ function addPipeSegment(x, y, z, direction, color) {
     }
 
     currentPipe.previousDirection = direction;
-    
+    grid[`${x},${y},${z}`] = {mesh, direction};
+    filledGridPoints++;
+
+    if (filledGridPoints >= totalGridPoints) {
+        console.log("All points filled! Restarting...");
+        setTimeout(resetScene, pipeSpeed * 2);  // Wait for restart just a scooch
+    }
     // Start the animations
     growPipe(mesh);
 }
@@ -260,7 +268,30 @@ function animate() {
 
     renderer.render(scene, camera);
 }
+function resetScene() {
+    console.log("Resetting scene...");
+    
+    // Get rid of all pipes
+    while(scene.children.length > 0){ 
+        scene.remove(scene.children[0]); 
+    }
 
+    // New light
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(1, 1, 1);
+    scene.add(directionalLight);
+
+    // Reset variables
+    Object.keys(grid).forEach(key => delete grid[key]);
+    currentPipe = null;
+    filledGridPoints = 0;
+
+    // Start a new pipe and the adventure begins again.
+    startNewPipe(Math.floor(gridSize/2), Math.floor(gridSize/2), Math.floor(gridSize/2));
+}
 
         init();
         animate();
